@@ -24,7 +24,16 @@ void uso(const char *nombre_programa) {
     exit(EXIT_FAILURE);
 }
 
-/* Procesa las opciones del rastreador (-v y -V) y actualiza las banderas correspondientes. */
+/*
+ * Procesa las opciones del rastreador (-v y -V) y actualiza las banderas correspondientes.
+ * Entrada:
+ *   - argc: Número de argumentos.
+ *   - argv: Lista de argumentos.
+ *   - modo_detallado: Puntero a la variable que indica si se activa el modo detallado.
+ *   - modo_pausa: Puntero a la variable que indica si se activa el modo pausa.
+ * Salida:
+ *   - Modifica las variables modo_detallado y modo_pausa según las opciones recibidas.
+ */
 void procesar_opciones(int argc, char **argv, int *modo_detallado, int *modo_pausa) {
     int opcion;
     while ((opcion = getopt(argc, argv, "+vV")) != -1) {
@@ -43,8 +52,15 @@ void procesar_opciones(int argc, char **argv, int *modo_detallado, int *modo_pau
 }
 
 
-/* Función para cargar la información de las syscalls desde un archivo CSV.
-   Retorna el número de syscalls leídas o -1 en caso de error. */
+/*
+ * Carga la información de las syscalls desde un archivo CSV.
+ * Entrada:
+ *   - nombre_archivo: Nombre del archivo CSV que contiene las syscalls.
+ *   - lista_syscalls: Arreglo donde se almacenarán las syscalls.
+ *   - max_syscalls: Límite máximo de syscalls a cargar.
+ * Salida:
+ *   - Retorna la cantidad de syscalls cargadas o -1 en caso de error.
+ */
 int cargar_syscalls(const char *nombre_archivo, syscall_info lista_syscalls[], int max_syscalls) {
     FILE *archivo = fopen(nombre_archivo, "r");
     if (!archivo) {
@@ -110,8 +126,15 @@ void mostrar_info_syscall(long numero_syscall, syscall_info lista_syscalls[], in
     }
 }
 
-/* Crea el proceso hijo y prepara la ejecución del programa a rastrear.
-   Retorna el PID del hijo o -1 en caso de error. */
+/* 
+ * Crea el proceso hijo y prepara la ejecución del programa a rastrear.
+ * Entrada:
+ *   - optind: Índice en argv donde comienza el nombre del programa a rastrear.
+ *   - argc: Número total de argumentos de la línea de comandos.
+ *   - argv: Arreglo de argumentos de la línea de comandos.
+ * Salida:
+ *   - PID del proceso hijo si se crea correctamente, o -1 en caso de error.
+ */
 pid_t ejecutar_programa(int optind, int argc, char **argv) {
     pid_t pid_hijo = fork();
     if (pid_hijo == 0) {
@@ -127,7 +150,17 @@ pid_t ejecutar_programa(int optind, int argc, char **argv) {
     return pid_hijo;
 }
 
-/* Función que realiza el rastreo del proceso hijo. */
+/* 
+ * Función que realiza el rastreo del proceso hijo.
+ * Entrada:
+ *   - pid_hijo: PID del proceso hijo a rastrear.
+ *   - lista_syscalls: Arreglo con la información de las syscalls.
+ *   - total_syscalls: Número total de syscalls en la lista.
+ *   - modo_detallado: Indica si se debe mostrar cada syscall detectada.
+ *   - modo_pausa: Indica si se debe pausar después de cada syscall detectada.
+ * Salida:
+ *   - Imprime un resumen de las syscalls detectadas y su frecuencia de uso.
+ */
 void rastrear_programa(pid_t pid_hijo, syscall_info lista_syscalls[], int total_syscalls, int modo_detallado, int modo_pausa) {
     int estado_hijo;
     long conteo_syscalls[MAX_SYSCALL] = {0};
