@@ -19,22 +19,22 @@ typedef struct {
 } syscall_info;
 
 /* Imprime el mensaje de uso y termina el programa. */
-void uso(const char *progname) {
-    fprintf(stderr, "Uso: %s [-v|-V] Prog [opciones de Prog]\n", progname);
+void uso(const char *nombre_programa) {
+    fprintf(stderr, "Uso: %s [-v|-V] Prog [opciones de Prog]\n", nombre_programa);
     exit(EXIT_FAILURE);
 }
 
 /* Procesa las opciones del rastreador (-v y -V) y actualiza las banderas correspondientes. */
-void procesar_opciones(int argc, char **argv, int *verbose, int *pause_flag) {
-    int opt;
-    while ((opt = getopt(argc, argv, "+vV")) != -1) {
-        switch (opt) {
+void procesar_opciones(int argc, char **argv, int *modo_detallado, int *modo_pausa) {
+    int opcion;
+    while ((opcion = getopt(argc, argv, "+vV")) != -1) {
+        switch (opcion) {
             case 'v':
-                *verbose = 1;
+                *modo_detallado = 1;
                 break;
             case 'V':
-                *verbose = 1;
-                *pause_flag = 1;
+                *modo_detallado = 1;
+                *modo_pausa = 1;
                 break;
             default:
                 uso(argv[0]);
@@ -42,11 +42,12 @@ void procesar_opciones(int argc, char **argv, int *verbose, int *pause_flag) {
     }
 }
 
+
 /* Función para cargar la información de las syscalls desde un archivo CSV.
    Retorna el número de syscalls leídas o -1 en caso de error. */
-int cargar_syscalls(const char *filename, syscall_info syscalls[], int max_syscalls) {
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
+int cargar_syscalls(const char *nombre_archivo, syscall_info lista_syscalls[], int max_syscalls) {
+    FILE *archivo = fopen(nombre_archivo, "r");
+    if (!archivo) {
         perror("Error al abrir el archivo CSV");
         return -1;
     }
@@ -55,65 +56,65 @@ int cargar_syscalls(const char *filename, syscall_info syscalls[], int max_sysca
     int contador = 0;
 
     // Leer y descartar la línea de encabezado.
-    if (fgets(linea, sizeof(linea), fp) == NULL) {
-        fclose(fp);
+    if (fgets(linea, sizeof(linea), archivo) == NULL) {
+        fclose(archivo);
         return -1;
     }
 
     // Leer cada línea y parsear los campos separados por coma.
-    while (fgets(linea, sizeof(linea), fp) && contador < max_syscalls) {
+    while (fgets(linea, sizeof(linea), archivo) && contador < max_syscalls) {
         linea[strcspn(linea, "\n")] = 0;  // Eliminar salto de línea.
 
         // Tokenizar la línea usando la coma como separador.
         char *token = strtok(linea, ",");
         if (token == NULL)
             continue;
-        syscalls[contador].numero = atoi(token);
+        lista_syscalls[contador].numero = atoi(token);
 
         token = strtok(NULL, ",");
         if (token == NULL)
             continue;
-        strncpy(syscalls[contador].nombre, token, sizeof(syscalls[contador].nombre) - 1);
-        syscalls[contador].nombre[sizeof(syscalls[contador].nombre) - 1] = '\0';
+        strncpy(lista_syscalls[contador].nombre, token, sizeof(lista_syscalls[contador].nombre) - 1);
+        lista_syscalls[contador].nombre[sizeof(lista_syscalls[contador].nombre) - 1] = '\0';
 
         token = strtok(NULL, ",");
         if (token == NULL)
             continue;
-        strncpy(syscalls[contador].descripcion, token, sizeof(syscalls[contador].descripcion) - 1);
-        syscalls[contador].descripcion[sizeof(syscalls[contador].descripcion) - 1] = '\0';
+        strncpy(lista_syscalls[contador].descripcion, token, sizeof(lista_syscalls[contador].descripcion) - 1);
+        lista_syscalls[contador].descripcion[sizeof(lista_syscalls[contador].descripcion) - 1] = '\0';
 
         contador++;
     }
-    fclose(fp);
+    fclose(archivo);
     return contador;
 }
 
 /* Busca en el arreglo de syscalls la información correspondiente al número dado.
    Retorna un puntero a la estructura si se encuentra, o NULL en caso contrario. */
-syscall_info *buscar_syscall(int num, syscall_info syscalls[], int total) {
+syscall_info *buscar_syscall(int numero_syscall, syscall_info lista_syscalls[], int total) {
     for (int i = 0; i < total; i++) {
-        if (syscalls[i].numero == num)
-            return &syscalls[i];
+        if (lista_syscalls[i].numero == numero_syscall)
+            return &lista_syscalls[i];
     }
     return NULL;
 }
 
 /* Muestra la información de la syscall detectada. */
-void mostrar_info_syscall(long syscall_num, syscall_info syscalls_info[], int total) {
-    syscall_info *info = buscar_syscall((int)syscall_num, syscalls_info, total);
+void mostrar_info_syscall(long numero_syscall, syscall_info lista_syscalls[], int total) {
+    syscall_info *info = buscar_syscall((int)numero_syscall, lista_syscalls, total);
     if (info) {
         printf("Syscall detectada: %ld (%s) - %s\n",
-               syscall_num, info->nombre, info->descripcion);
+               numero_syscall, info->nombre, info->descripcion);
     } else {
-        printf("Syscall detectada: %ld (nombre y descripción desconocidos)\n", syscall_num);
+        printf("Syscall detectada: %ld (nombre y descripción desconocidos)\n", numero_syscall);
     }
 }
 
 /* Crea el proceso hijo y prepara la ejecución del programa a rastrear.
    Retorna el PID del hijo o -1 en caso de error. */
 pid_t ejecutar_programa(int optind, int argc, char **argv) {
-    pid_t child = fork();
-    if (child == 0) {
+    pid_t pid_hijo = fork();
+    if (pid_hijo == 0) {
         // Proceso hijo: solicitar ser rastreado y ejecutar el programa.
         if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1) {
             perror("ptrace(PTRACE_TRACEME)");
@@ -123,41 +124,41 @@ pid_t ejecutar_programa(int optind, int argc, char **argv) {
         perror("execvp");
         exit(EXIT_FAILURE);
     }
-    return child;
+    return pid_hijo;
 }
 
 /* Función que realiza el rastreo del proceso hijo. */
-void rastrear_programa(pid_t child, syscall_info syscalls_info[], int total_syscalls, int verbose, int pause_flag) {
-    int status;
-    long syscall_counts[MAX_SYSCALL] = {0};
+void rastrear_programa(pid_t pid_hijo, syscall_info lista_syscalls[], int total_syscalls, int modo_detallado, int modo_pausa) {
+    int estado_hijo;
+    long conteo_syscalls[MAX_SYSCALL] = {0};
 
     // Bucle de rastreo hasta que el hijo termine.
     while (1) {
-        wait(&status);
-        if (WIFEXITED(status))
+        wait(&estado_hijo);
+        if (WIFEXITED(estado_hijo))
             break;
 
         // Intercepta la entrada o salida de una syscall.
-        long syscall = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, NULL);
+        long syscall = ptrace(PTRACE_PEEKUSER, pid_hijo, sizeof(long) * ORIG_RAX, NULL);
         if (syscall < 0) {
             perror("ptrace(PTRACE_PEEKUSER)");
             break;
         }
 
         if (syscall < MAX_SYSCALL) {
-            syscall_counts[syscall]++;
+            conteo_syscalls[syscall]++;
         }
 
-        if (verbose) {
-            mostrar_info_syscall(syscall, syscalls_info, total_syscalls);
-            if (pause_flag) {
+        if (modo_detallado) {
+            mostrar_info_syscall(syscall, lista_syscalls, total_syscalls);
+            if (modo_pausa) {
                 //printf("Presione ENTER para continuar...");
                 getchar();
             }
         }
 
         // Reanuda la ejecución del hijo hasta la siguiente syscall.
-        if (ptrace(PTRACE_SYSCALL, child, NULL, NULL) == -1) {
+        if (ptrace(PTRACE_SYSCALL, pid_hijo, NULL, NULL) == -1) {
             perror("ptrace(PTRACE_SYSCALL)");
             break;
         }
@@ -166,22 +167,22 @@ void rastrear_programa(pid_t child, syscall_info syscalls_info[], int total_sysc
     // Imprime el resumen de las syscalls utilizadas.
     printf("\nResumen de syscalls:\n");
     for (int i = 0; i < MAX_SYSCALL; i++) {
-        if (syscall_counts[i] > 0) {
-            syscall_info *info = buscar_syscall(i, syscalls_info, total_syscalls);
+        if (conteo_syscalls[i] > 0) {
+            syscall_info *info = buscar_syscall(i, lista_syscalls, total_syscalls);
             if (info)
-                printf("Syscall %d (%s): %ld veces\n", i, info->nombre, syscall_counts[i]);
+                printf("Syscall %d (%s): %ld veces\n", i, info->nombre, conteo_syscalls[i]);
             else
-                printf("Syscall %d (nombre desconocido): %ld veces\n", i, syscall_counts[i]);
+                printf("Syscall %d (nombre desconocido): %ld veces\n", i, conteo_syscalls[i]);
         }
     }
 }
 
 /* Función principal */
 int main(int argc, char **argv) {
-    int verbose = 0, pause_flag = 0;
+    int modo_detallado = 0, modo_pausa = 0;
 
     // Procesar las opciones de línea de comando.
-    procesar_opciones(argc, argv, &verbose, &pause_flag);
+    procesar_opciones(argc, argv, &modo_detallado, &modo_pausa);
 
     // Verificar que se especificó el programa a ejecutar.
     if (optind >= argc) {
@@ -190,22 +191,22 @@ int main(int argc, char **argv) {
     }
 
     // Cargar la información de las syscalls desde el CSV.
-    syscall_info syscalls_info[MAX_SYSCALL];
-    int total_syscalls = cargar_syscalls("syscalls.csv", syscalls_info, MAX_SYSCALL);
+    syscall_info lista_syscalls[MAX_SYSCALL];
+    int total_syscalls = cargar_syscalls("syscalls.csv", lista_syscalls, MAX_SYSCALL);
     if (total_syscalls < 0) {
         fprintf(stderr, "No se pudo cargar la información de las syscalls.\n");
         exit(EXIT_FAILURE);
     }
 
     // Crear el proceso hijo y ejecutar el programa a rastrear.
-    pid_t child = ejecutar_programa(optind, argc, argv);
-    if (child < 0) {
+    pid_t pid_hijo = ejecutar_programa(optind, argc, argv);
+    if (pid_hijo < 0) {
         perror("fork");
         exit(EXIT_FAILURE);
     }
 
     // En el proceso padre, iniciar el rastreo.
-    rastrear_programa(child, syscalls_info, total_syscalls, verbose, pause_flag);
+    rastrear_programa(pid_hijo, lista_syscalls, total_syscalls, modo_detallado, modo_pausa);
 
     return 0;
 }
